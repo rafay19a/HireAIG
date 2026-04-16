@@ -1,0 +1,7 @@
+{
+  "name": "AI Hiring Assistant",
+  "description": "Production-grade AI hiring platform with resume screening, voice interviews, and automated scheduling.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
