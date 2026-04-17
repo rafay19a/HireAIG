@@ -7,6 +7,7 @@ export interface Candidate {
   name: string;
   email: string;
   phone: string;
+  jd?: string;
   skills: string[];
   matchedSkills: string[];
   missingSkills: string[];

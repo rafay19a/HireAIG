@@ -117,6 +117,21 @@ async function startServer() {
     });
   });
 
+  // API: Delete candidate
+  app.delete("/api/candidates/:id", (req, res) => {
+    try {
+      const result = db.prepare("DELETE FROM candidates WHERE id = ?").run(req.params.id);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete candidate:", err);
+      res.status(500).json({ error: "Failed to delete candidate" });
+    }
+  });
+
   // API: Send Scheduling Link
   app.post("/api/candidates/:id/send-scheduling-link", async (req, res) => {
     const candidate = db.prepare("SELECT * FROM candidates WHERE id = ?").get(req.params.id) as any;
@@ -197,8 +212,25 @@ async function startServer() {
   // API: Save Interview Report
   app.post("/api/candidates/:id/report", (req, res) => {
     const { report } = req.body;
-    db.prepare("UPDATE candidates SET report = ?, status = 'COMPLETED' WHERE id = ?").run(JSON.stringify(report), req.params.id);
-    res.json({ success: true });
+
+    if (!report) {
+      return res.status(400).json({ error: "Report is required" });
+    }
+
+    try {
+      const result = db
+        .prepare("UPDATE candidates SET report = ?, status = 'COMPLETED' WHERE id = ?")
+        .run(JSON.stringify(report), req.params.id);
+
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to save report:", err);
+      res.status(500).json({ error: "Failed to save interview report" });
+    }
   });
 
   // Vite middleware for development

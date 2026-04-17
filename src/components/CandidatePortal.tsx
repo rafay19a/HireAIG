@@ -23,6 +23,7 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/candidates/${candidateId}`)
@@ -36,11 +37,8 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
 
   const handleInterviewEnd = async (transcript: string) => {
     setIsGeneratingReport(true);
+    setSubmitError(null);
     try {
-      // We need to import geminiService or call it here. 
-      // For simplicity in this portal, we'll assume the App logic handles it, 
-      // but since this is a separate page, we should have the logic here too.
-      // I'll use a dynamic import or just define the logic.
       const { geminiService } = await import('../services/geminiService');
       const report = await geminiService.generateInterviewReport(
         transcript,
@@ -48,15 +46,22 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
         candidate.resumeText
       );
       
-      await fetch(`/api/candidates/${candidateId}/report`, {
+      const response = await fetch(`/api/candidates/${candidateId}/report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ report })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save interview report');
+      }
       
+      setCandidate((prev: any) => prev ? { ...prev, report, status: 'COMPLETED' } : prev);
       setMode('completed');
     } catch (err) {
       console.error("Failed to finish interview:", err);
+      setSubmitError(err instanceof Error ? err.message : 'Failed to finish interview');
     } finally {
       setIsGeneratingReport(false);
     }
@@ -71,16 +76,24 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
   const confirmTime = async () => {
     if (!selectedTime) return;
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch(`/api/candidates/${candidateId}/confirm-time`, {
+      const response = await fetch(`/api/candidates/${candidateId}/confirm-time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ startTime: selectedTime })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to confirm interview time');
+      }
+
       alert("Interview confirmed! Check your email for the link.");
       window.location.reload();
     } catch (err) {
       console.error(err);
+      setSubmitError(err instanceof Error ? err.message : 'Failed to confirm interview time');
     } finally {
       setIsSubmitting(false);
     }
@@ -181,6 +194,12 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
                 </div>
               )}
 
+              {submitError && (
+                <div className="mx-8 mb-4 p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-300 text-xs flex items-center gap-2 relative z-10">
+                  <AlertCircle size={14} /> {submitError}
+                </div>
+              )}
+
               <div className="flex-1 overflow-y-auto space-y-6 mb-8 pr-4 custom-scrollbar relative z-10">
                 {isGeneratingReport ? (
                   <div className="h-full flex flex-col items-center justify-center text-white text-center">
@@ -248,6 +267,9 @@ export const CandidatePortal: React.FC<CandidatePortalProps> = ({ candidateId, i
             </div>
             <h2 className="text-4xl font-bold mb-4">Interview Completed</h2>
             <p className="text-zinc-400 max-w-md mx-auto">Thank you for completing the screening call. Our hiring team will review the results and get back to you soon.</p>
+            {submitError && (
+              <p className="text-amber-300 text-sm mt-4">{submitError}</p>
+            )}
           </motion.div>
         )}
       </div>

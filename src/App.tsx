@@ -36,6 +36,18 @@ export default function App() {
   const [interviewReport, setInterviewReport] = useState<any>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [topPercentage, setTopPercentage] = useState<number>(100);
+  const [deletingCandidateId, setDeletingCandidateId] = useState<string | null>(null);
+
+  const refreshCandidates = async () => {
+    const response = await fetch('/api/candidates');
+    if (!response.ok) {
+      throw new Error('Failed to fetch candidates');
+    }
+
+    const data = await response.json();
+    setCandidates(data);
+    return data;
+  };
 
   // Simple routing
   const path = window.location.pathname;
@@ -45,9 +57,9 @@ export default function App() {
   }
 
   useEffect(() => {
-    fetch('/api/candidates')
-      .then(res => res.json())
-      .then(data => setCandidates(data));
+    refreshCandidates().catch(err => {
+      console.error('Failed to load candidates:', err);
+    });
   }, []);
 
   useEffect(() => {
@@ -63,12 +75,26 @@ export default function App() {
     try {
       const report = await geminiService.generateInterviewReport(
         transcript,
-        jd,
+        selectedCandidate.jd || jd,
         selectedCandidate.resumeText
       );
+
+      const response = await fetch(`/api/candidates/${selectedCandidate.id}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save interview report');
+      }
+
       setInterviewReport(report);
+      await refreshCandidates();
     } catch (err) {
       console.error("Failed to generate report:", err);
+      alert(err instanceof Error ? err.message : 'Failed to generate interview report');
     } finally {
       setIsGeneratingReport(false);
     }
@@ -134,10 +160,7 @@ export default function App() {
       });
       if (response.ok) {
         alert('Scheduling link sent to candidate!');
-        // Refresh candidates
-        const res = await fetch('/api/candidates');
-        const data = await res.json();
-        setCandidates(data);
+        await refreshCandidates();
       } else {
         const errorData = await response.json();
         alert(`Error: ${errorData.error || 'Failed to send link'}`);
@@ -147,6 +170,32 @@ export default function App() {
       alert('Failed to connect to server');
     } finally {
       setIsSendingLink(false);
+    }
+  };
+
+  const deleteCandidate = async (candidate: Candidate) => {
+    const confirmed = window.confirm(`Are you sure you want to delete ${candidate.name}?`);
+    if (!confirmed) return;
+
+    setDeletingCandidateId(candidate.id);
+    try {
+      const response = await fetch(`/api/candidates/${candidate.id}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete candidate');
+      }
+
+      setCandidates(prev => prev.filter(c => c.id !== candidate.id));
+      setSelectedCandidate(prev => prev?.id === candidate.id ? null : prev);
+      setInterviewReport(prev => (selectedCandidate?.id === candidate.id ? null : prev));
+    } catch (err) {
+      console.error('Failed to delete candidate:', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete candidate');
+    } finally {
+      setDeletingCandidateId(null);
     }
   };
 
@@ -329,6 +378,8 @@ export default function App() {
                         candidate={candidate} 
                         isSelected={selectedCandidate?.id === candidate.id}
                         onSelect={setSelectedCandidate}
+                        onDelete={deleteCandidate}
+                        isDeleting={deletingCandidateId === candidate.id}
                       />
                     ))}
                 </div>
